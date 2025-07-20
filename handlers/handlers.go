@@ -1601,8 +1601,8 @@ type OrderPaginationResponse struct {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body cart.CartRequest true "Cart item details"
-// @Success 201 {object} dto.SuccessResult{data=cart.CartResponse}
+// @Param request body dtoCart.CartRequest true "Cart item details"
+// @Success 201 {object} dto.SuccessResult{data=dtoCart.CartResponse}
 // @Failure 400 {object} dto.ErrorResult
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 404 {object} dto.ErrorResult
@@ -1724,7 +1724,7 @@ func (h *Handler) CreateCart(c echo.Context) error {
 // @Tags Cart
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} dto.SuccessResult{data=[]cart.CartResponse}
+// @Success 200 {object} dto.SuccessResult{data=[]dtoCart.CartResponse}
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 403 {object} dto.ErrorResult
 // @Failure 500 {object} dto.ErrorResult
@@ -1778,7 +1778,7 @@ func (h *Handler) GetAllCarts(c echo.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Cart Item ID"
-// @Success 200 {object} dto.SuccessResult{data=cart.CartResponse}
+// @Success 200 {object} dto.SuccessResult{data=dtoCart.CartResponse}
 // @Failure 400 {object} dto.ErrorResult
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 403 {object} dto.ErrorResult
@@ -1854,8 +1854,8 @@ func (h *Handler) GetCartByID(c echo.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Cart Item ID"
-// @Param request body cart.CartRequest true "Update data"
-// @Success 200 {object} dto.SuccessResult{data=cart.CartResponse}
+// @Param request body dtoCart.CartRequest true "Update data"
+// @Success 200 {object} dto.SuccessResult{data=dtoCart.CartResponse}
 // @Failure 400 {object} dto.ErrorResult
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 403 {object} dto.ErrorResult
@@ -2052,7 +2052,7 @@ func (h *Handler) DeleteCart(c echo.Context) error {
 // @Tags Cart
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} dto.SuccessResult{data=[]cart.CartResponse}
+// @Success 200 {object} dto.SuccessResult{data=[]dtoCart.CartResponse}
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 500 {object} dto.ErrorResult
 // @Router /users/cart [get]
@@ -2104,7 +2104,7 @@ func (h *Handler) GetUserCart(c echo.Context) error {
 // @Security BearerAuth
 // @Param page query int false "Page number" default(1) minimum(1)
 // @Param limit query int false "Items per page" default(10) minimum(1) maximum(100)
-// @Success 200 {object} dto.SuccessResult{data=CartPaginationResponse}
+// @Success 200 {object} dto.SuccessResult{data=dtoCart.CartResponse}
 // @Failure 400 {object} dto.ErrorResult
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 403 {object} dto.ErrorResult

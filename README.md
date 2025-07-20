@@ -1,4 +1,15 @@
+####  **Singkatkan Bagian Penjelasan Proyek**
+> A full-featured e-commerce REST API built with Go (Echo), MySQL, and JWT authentication. Supports product & brand management, with Swagger docs auto-generated.
+
+---
+
+### ✅ **Versi Ringkas dan Revisi (Opsional)**
+Kalau kamu ingin versi lebih clean dan profesional, ini contohnya:
+
+---
+
 # Ecommerce API
+
 
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
 ![Echo](https://img.shields.io/badge/Echo-v4-blue)
@@ -32,14 +43,14 @@ ecommerce/
 ├── go.mod            # Go modules
 └── go.sum            # Dependency checksums
 
-🚀 Quick Start
-Prerequisites
+## 🚀 Quick Start
+### Prerequisites
 Go 1.21+
 
 MySQL 8.0+
 
 Git
-Installation
+### Installation
 Clone the repo:
 
 git clone https://github.com/rakuszz0/K-Style-Hub-Assignment
@@ -67,9 +78,10 @@ Authorization: Bearer your.jwt.token
 Example Endpoints
 User Registration
 
-http
-POST /api/v1/auth/register
+POST /api/v1/products
+Authorization: Bearer your.jwt.token
 Content-Type: application/json
+
 
 {
   "name": "John Doe",

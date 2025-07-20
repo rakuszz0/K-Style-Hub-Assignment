@@ -3,14 +3,18 @@ package controllers
 import (
 	dtoAuth "ecommerce/dto/auth"
 	dtoBrands "ecommerce/dto/brands"
+	dtoCart "ecommerce/dto/cart"
+	dtoOrder "ecommerce/dto/order"
 	dtoProduct "ecommerce/dto/product"
 	dto "ecommerce/dto/result"
 	"ecommerce/models"
 	"ecommerce/pkg/bcrypt"
 	jwtToken "ecommerce/pkg/jwt"
 	repo "ecommerce/repository"
+	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,23 +23,30 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
 )
 
 type Handler struct {
 	userRepository    repo.UserRepository
 	brandRepository   repo.BrandRepository
 	productRepository repo.ProductRepository
+	cartRepository    repo.CartRepository
+	orderRepository   repo.OrderRepository
 }
 
 func NewHandler(
 	userRepo repo.UserRepository,
 	brandRepo repo.BrandRepository,
 	productRepo repo.ProductRepository,
+	cartRepo repo.CartRepository,
+	orderRepo repo.OrderRepository,
 ) *Handler {
 	return &Handler{
 		userRepository:    userRepo,
 		brandRepository:   brandRepo,
 		productRepository: productRepo,
+		cartRepository:    cartRepo,
+		orderRepository:   orderRepo,
 	}
 }
 
@@ -1175,5 +1186,999 @@ func (h *Handler) GetAllProductsWithPagination(c echo.Context) error {
 			"page":     page,
 			"limit":    limit,
 		},
+	})
+}
+
+// CreateOrder godoc
+// @Summary Create a new order
+// @Description Create a new order for a user
+// @Tags Order
+// @Accept json
+// @Produce json
+// @Param request body dtoOrder.OrderRequest true "Order data"
+// @Success 201 {object} dto.SuccessResult{data=dtoOrder.OrderResponse}
+// @Failure 400,401,404,500 {object} dto.ErrorResult
+// @Router /orders [post]
+// @Security BearerAuth
+func (h *Handler) CreateOrder(c echo.Context) error {
+
+	userIDInterface := c.Get("userLogin")
+	userID, ok := userIDInterface.(float64)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+
+	var req dtoOrder.OrderRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid input data",
+		})
+	}
+
+	// Ambil data produk dari DB untuk validasi & response
+	product, err := h.productRepository.GetByID(req.ProductID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, dto.ErrorResult{
+			Code:    http.StatusNotFound,
+			Message: "Product not found",
+		})
+	}
+
+	order := models.Order{
+		UserID:    uint(userID),
+		ProductID: req.ProductID,
+		Quantity:  req.Quantity,
+		Status:    "pending",
+	}
+
+	if err := h.orderRepository.Create(&order); err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to create order",
+		})
+	}
+
+	response := dtoOrder.OrderResponse{
+		ID:        order.ID,
+		UserID:    order.UserID,
+		ProductID: order.ProductID,
+		Quantity:  order.Quantity,
+		Status:    order.Status,
+		Product: dtoOrder.Product{
+			ID:       product.ID,
+			Name:     product.Name,
+			Price:    product.Price,
+			Quantity: product.Quantity,
+			BrandID:  product.BrandID,
+		},
+	}
+
+	return c.JSON(http.StatusCreated, dto.SuccessResult{
+		Code: http.StatusCreated,
+		Data: response,
+	})
+}
+
+// GetOrdersByUser godoc
+// @Summary Get orders by user ID
+// @Description Get all orders placed by a specific user
+// @Tags Order
+// @Produce json
+// @Success 200 {object} dto.SuccessResult{data=[]dtoOrder.OrderResponse}
+// @Failure 400,401,404,500 {object} dto.ErrorResult
+// @Router /orders/user [get]
+// @Security BearerAuth
+func (h *Handler) GetOrdersByUser(c echo.Context) error {
+	userIDInterface := c.Get("userLogin")
+	userIDFloat, ok := userIDInterface.(float64)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+	userID := uint(userIDFloat)
+
+	orders, err := h.orderRepository.GetByUserID(userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch orders",
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: orders,
+	})
+}
+
+// GetOrderByID godoc
+// @Summary Get order by ID
+// @Description Get details of a specific order by its ID
+// @Tags Order
+// @Produce json
+// @Param id path int true "Order ID"
+// @Success 200 {object} dto.SuccessResult{data=dtoOrder.OrderResponse}
+// @Failure 400,404,500 {object} dto.ErrorResult
+// @Router /orders/{id} [get]
+// @Security BearerAuth
+func (h *Handler) GetOrderByID(c echo.Context) error {
+	orderIDStr := c.Param("id")
+	orderID, err := strconv.Atoi(orderIDStr)
+	if err != nil || orderID <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid order ID format",
+		})
+	}
+
+	order, err := h.orderRepository.GetByID(uint(orderID))
+	if err != nil {
+		// Bisa karena error DB, atau record tidak ditemukan
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch order",
+		})
+	}
+
+	if order == nil {
+		return c.JSON(http.StatusNotFound, dto.ErrorResult{
+			Code:    http.StatusNotFound,
+			Message: "Order not found",
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: order,
+	})
+}
+
+// GetAllOrders godoc
+// @Summary Get all orders
+// @Description Get a list of all orders (admin only)
+// @Tags Order
+// @Produce json
+// @Success 200 {object} dto.SuccessResult{data=[]dtoOrder.OrderResponse}
+// @Failure 400,401,404,500 {object} dto.ErrorResult
+// @Router /orders [get]
+// @Security BearerAuth
+func (h *Handler) GetAllOrders(c echo.Context) error {
+	isAdmin, ok := c.Get("isAdmin").(bool)
+	if !ok || !isAdmin {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized: admin access only",
+		})
+	}
+
+	orders, err := h.orderRepository.GetAll()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch orders",
+		})
+	}
+
+	if len(orders) == 0 {
+		return c.JSON(http.StatusNotFound, dto.ErrorResult{
+			Code:    http.StatusNotFound,
+			Message: "No orders found",
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: orders,
+	})
+}
+
+// UpdateOrder godoc
+// @Summary Update an order by ID
+// @Description Update the status of an order (admin only), or quantity (user)
+// @Tags Order
+// @Accept json
+// @Produce json
+// @Param id path int true "Order ID"
+// @Param request body dtoOrder.OrderRequest true "Order update data"
+// @Success 200 {object} dto.SuccessResult{data=dtoOrder.OrderResponse}
+// @Failure 400,401,403,404,500 {object} dto.ErrorResult
+// @Router /orders/{id} [put]
+// @Security BearerAuth
+func (h *Handler) UpdateOrder(c echo.Context) error {
+	// Ambil informasi role & user ID
+	isAdmin, _ := c.Get("isAdmin").(bool)
+	userIDFloat, ok := c.Get("userLogin").(float64)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+	userID := uint(userIDFloat)
+
+	// Validasi ID order dari param
+	orderID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || orderID <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid order ID format",
+		})
+	}
+
+	// Ambil data order dari repo
+	order, err := h.orderRepository.GetByID(uint(orderID))
+	if err != nil || order == nil {
+		return c.JSON(http.StatusNotFound, dto.ErrorResult{
+			Code:    http.StatusNotFound,
+			Message: "Order not found",
+		})
+	}
+
+	// Jika user bukan admin, pastikan hanya bisa edit order miliknya
+	if !isAdmin && order.UserID != userID {
+		return c.JSON(http.StatusForbidden, dto.ErrorResult{
+			Code:    http.StatusForbidden,
+			Message: "Forbidden: you can only update your own order",
+		})
+	}
+
+	// Bind request
+	var req dtoOrder.OrderUpdateRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid input data",
+		})
+	}
+
+	// Role-based update
+	if isAdmin {
+		// Admin bisa update semua field
+		if req.Quantity > 0 {
+			order.Quantity = req.Quantity
+		}
+		if req.Status != "" {
+			order.Status = req.Status
+		}
+	} else {
+		// User biasa hanya boleh update quantity
+		if req.Quantity <= 0 {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+				Code:    http.StatusBadRequest,
+				Message: "Quantity must be greater than 0",
+			})
+		}
+		order.Quantity = req.Quantity
+	}
+
+	if err := h.orderRepository.Update(order); err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to update order",
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: order,
+	})
+}
+
+// DeleteOrder godoc
+// @Summary Delete an order
+// @Description Delete an order by ID
+// @Tags Orders
+// @Produce json
+// @Param id path int true "Order ID"
+// @Success 200 {object} dto.SuccessResult
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 404 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /orders/{id} [delete]
+func (h *Handler) DeleteOrder(c echo.Context) error {
+	// Get and validate ID
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid order ID format",
+		})
+	}
+
+	// Check if order exists first
+	if _, err := h.orderRepository.GetByID(uint(id)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, dto.ErrorResult{
+				Code:    http.StatusNotFound,
+				Message: "Order not found",
+			})
+		}
+		log.Printf("Error checking order existence (ID: %d): %v", id, err)
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to verify order",
+		})
+	}
+
+	// Delete order
+	if err := h.orderRepository.Delete(uint(id)); err != nil {
+		log.Printf("Failed to delete order (ID: %d): %v", id, err)
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to delete order",
+		})
+	}
+
+	log.Printf("Successfully deleted order ID: %d", id)
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: "Order deleted successfully",
+	})
+}
+
+// GetAllOrderWithPagination godoc
+// @Summary Get paginated list of orders
+// @Description Retrieve orders with pagination support
+// @Tags Orders
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number (default: 1)" minimum(1)
+// @Param limit query int false "Number of items per page (default: 10)" minimum(1) maximum(100)
+// @Success 200 {object} dto.SuccessResult{data=OrderPaginationResponse}
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /orders [get]
+func (h *Handler) GetAllOrderWithPagination(c echo.Context) error {
+	// Parse and validate pagination parameters
+	pageStr := c.QueryParam("page")
+	limitStr := c.QueryParam("limit")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	} else if limit > 100 {
+		limit = 100 // Enforce maximum limit to prevent excessive load
+	}
+
+	// Get paginated orders
+	orders, total, err := h.orderRepository.GetAllWithPagination(page, limit)
+	if err != nil {
+		log.Printf("Failed to fetch orders (page: %d, limit: %d): %v", page, limit, err)
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch orders",
+		})
+	}
+
+	// Calculate pagination metadata
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+	hasNext := page < totalPages
+	hasPrev := page > 1
+
+	// Prepare response
+	response := OrderPaginationResponse{
+		Orders:     orders,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+		HasNext:    hasNext,
+		HasPrev:    hasPrev,
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: response,
+	})
+}
+
+// OrderPaginationResponse defines the structure for paginated order response
+type OrderPaginationResponse struct {
+	Orders     []models.Order `json:"orders"`
+	Total      int            `json:"total"`
+	Page       int            `json:"page"`
+	Limit      int            `json:"limit"`
+	TotalPages int            `json:"total_pages"`
+	HasNext    bool           `json:"has_next"`
+	HasPrev    bool           `json:"has_prev"`
+}
+
+// CreateCart godoc
+// @Summary Add item to cart
+// @Description Add a product to the user's shopping cart
+// @Tags Cart
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body cart.CartRequest true "Cart item details"
+// @Success 201 {object} dto.SuccessResult{data=cart.CartResponse}
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 404 {object} dto.ErrorResult
+// @Failure 409 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /carts [post]
+func (h *Handler) CreateCart(c echo.Context) error {
+	// Get authenticated user ID
+	userID, ok := c.Get("userLogin").(int)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized: User not authenticated",
+		})
+	}
+
+	// Bind and validate request
+	var req dtoCart.CartRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid request body",
+		})
+	}
+
+	// Validate quantity
+	if req.Quantity <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Quantity must be greater than 0",
+		})
+	}
+
+	// Check if product exists
+	product, err := h.productRepository.GetByID(req.ProductID)
+	if err != nil || product == nil {
+		return c.JSON(http.StatusNotFound, dto.ErrorResult{
+			Code:    http.StatusNotFound,
+			Message: "Product not found",
+		})
+	}
+
+	// Check product stock availability
+	if product.Quantity < req.Quantity {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Insufficient product stock",
+		})
+	}
+
+	// Check if item already exists in cart
+	existingCart, err := h.cartRepository.GetByUserIDAndProductID(uint(userID), req.ProductID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to check existing cart items",
+		})
+	}
+
+	var cartItem *models.Cart
+	if existingCart != nil {
+		// Update quantity if item already exists
+		existingCart.Quantity += req.Quantity
+		if err := h.cartRepository.Update(existingCart); err != nil {
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+				Code:    http.StatusInternalServerError,
+				Message: "Failed to update cart item quantity",
+			})
+		}
+		cartItem = existingCart
+	} else {
+		// Create new cart item
+		cartItem = &models.Cart{
+			UserID:    uint(userID),
+			ProductID: req.ProductID,
+			Quantity:  req.Quantity,
+		}
+		if err := h.cartRepository.Create(cartItem); err != nil {
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+				Code:    http.StatusInternalServerError,
+				Message: "Failed to add item to cart",
+			})
+		}
+	}
+
+	// Get the full cart item with product details
+	fullCartItem, err := h.cartRepository.GetByID(cartItem.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to retrieve cart item details",
+		})
+	}
+
+	// Prepare response
+	response := dtoCart.CartResponse{
+		ID:        fullCartItem.ID,
+		UserID:    fullCartItem.UserID,
+		ProductID: fullCartItem.ProductID,
+		Quantity:  fullCartItem.Quantity,
+		Product: dtoCart.Product{
+			ID:       fullCartItem.Product.ID,
+			Name:     fullCartItem.Product.Name,
+			Price:    fullCartItem.Product.Price,
+			Quantity: fullCartItem.Product.Quantity,
+			BrandID:  fullCartItem.Product.BrandID,
+		},
+	}
+
+	return c.JSON(http.StatusCreated, dto.SuccessResult{
+		Code: http.StatusCreated,
+		Data: response,
+	})
+}
+
+// GetAllCarts godoc
+// @Summary Get all carts
+// @Description Get a list of all cart items (Admin only)
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} dto.SuccessResult{data=[]cart.CartResponse}
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 403 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /carts [get]
+func (h *Handler) GetAllCarts(c echo.Context) error {
+	// Admin check
+	isAdmin, ok := c.Get("isAdmin").(bool)
+	if !ok || !isAdmin {
+		return c.JSON(http.StatusForbidden, dto.ErrorResult{
+			Code:    http.StatusForbidden,
+			Message: "Forbidden: Admin access required",
+		})
+	}
+
+	carts, err := h.cartRepository.GetAll()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch carts",
+		})
+	}
+
+	// Map to response format
+	var response []dtoCart.CartResponse
+	for _, cartItem := range carts {
+		response = append(response, dtoCart.CartResponse{
+			ID:        cartItem.ID,
+			UserID:    cartItem.UserID,
+			ProductID: cartItem.ProductID,
+			Quantity:  cartItem.Quantity,
+			Product: dtoCart.Product{
+				ID:       cartItem.Product.ID,
+				Name:     cartItem.Product.Name,
+				Price:    cartItem.Product.Price,
+				Quantity: cartItem.Product.Quantity,
+				BrandID:  cartItem.Product.BrandID,
+			},
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: response,
+	})
+}
+
+// GetCartByID godoc
+// @Summary Get cart item by ID
+// @Description Get a specific cart item by its ID
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Cart Item ID"
+// @Success 200 {object} dto.SuccessResult{data=cart.CartResponse}
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 403 {object} dto.ErrorResult
+// @Failure 404 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /carts/{id} [get]
+func (h *Handler) GetCartByID(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid cart ID format",
+		})
+	}
+
+	// Get authenticated user
+	userID, ok := c.Get("userLogin").(int)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+
+	cartItem, err := h.cartRepository.GetByID(uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, dto.ErrorResult{
+				Code:    http.StatusNotFound,
+				Message: "Cart item not found",
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch cart item",
+		})
+	}
+
+	// Check ownership (unless admin)
+	isAdmin, _ := c.Get("isAdmin").(bool)
+	if !isAdmin && cartItem.UserID != uint(userID) {
+		return c.JSON(http.StatusForbidden, dto.ErrorResult{
+			Code:    http.StatusForbidden,
+			Message: "Forbidden: You don't have access to this cart item",
+		})
+	}
+
+	response := dtoCart.CartResponse{
+		ID:        cartItem.ID,
+		UserID:    cartItem.UserID,
+		ProductID: cartItem.ProductID,
+		Quantity:  cartItem.Quantity,
+		Product: dtoCart.Product{
+			ID:       cartItem.Product.ID,
+			Name:     cartItem.Product.Name,
+			Price:    cartItem.Product.Price,
+			Quantity: cartItem.Product.Quantity,
+			BrandID:  cartItem.Product.BrandID,
+		},
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: response,
+	})
+}
+
+// UpdateCart godoc
+// @Summary Update cart item
+// @Description Update quantity of a cart item
+// @Tags Cart
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Cart Item ID"
+// @Param request body cart.CartRequest true "Update data"
+// @Success 200 {object} dto.SuccessResult{data=cart.CartResponse}
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 403 {object} dto.ErrorResult
+// @Failure 404 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /carts/{id} [put]
+func (h *Handler) UpdateCart(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid cart ID format",
+		})
+	}
+
+	// Get authenticated user
+	userID, ok := c.Get("userLogin").(int)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+
+	// Bind request
+	var req dtoCart.CartRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid request body",
+		})
+	}
+
+	// Validate quantity
+	if req.Quantity <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Quantity must be greater than 0",
+		})
+	}
+
+	// Get existing cart item
+	cartItem, err := h.cartRepository.GetByID(uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, dto.ErrorResult{
+				Code:    http.StatusNotFound,
+				Message: "Cart item not found",
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch cart item",
+		})
+	}
+
+	// Check ownership (unless admin)
+	isAdmin, _ := c.Get("isAdmin").(bool)
+	if !isAdmin && cartItem.UserID != uint(userID) {
+		return c.JSON(http.StatusForbidden, dto.ErrorResult{
+			Code:    http.StatusForbidden,
+			Message: "Forbidden: You don't have access to this cart item",
+		})
+	}
+
+	// Check product stock if changing product
+	if req.ProductID != 0 && req.ProductID != cartItem.ProductID {
+		product, err := h.productRepository.GetByID(req.ProductID)
+		if err != nil || product == nil {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+				Code:    http.StatusBadRequest,
+				Message: "New product not found",
+			})
+		}
+		if product.Quantity < req.Quantity {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+				Code:    http.StatusBadRequest,
+				Message: "Insufficient product stock",
+			})
+		}
+		cartItem.ProductID = req.ProductID
+	}
+
+	// Update quantity
+	cartItem.Quantity = req.Quantity
+	if err := h.cartRepository.Update(cartItem); err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to update cart item",
+		})
+	}
+
+	// Get updated cart item with product details
+	updatedCart, err := h.cartRepository.GetByID(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch updated cart item",
+		})
+	}
+
+	response := dtoCart.CartResponse{
+		ID:        updatedCart.ID,
+		UserID:    updatedCart.UserID,
+		ProductID: updatedCart.ProductID,
+		Quantity:  updatedCart.Quantity,
+		Product: dtoCart.Product{
+			ID:       updatedCart.Product.ID,
+			Name:     updatedCart.Product.Name,
+			Price:    updatedCart.Product.Price,
+			Quantity: updatedCart.Product.Quantity,
+			BrandID:  updatedCart.Product.BrandID,
+		},
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: response,
+	})
+}
+
+// DeleteCart godoc
+// @Summary Delete cart item
+// @Description Remove an item from cart
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Cart Item ID"
+// @Success 200 {object} dto.SuccessResult
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 403 {object} dto.ErrorResult
+// @Failure 404 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /carts/{id} [delete]
+func (h *Handler) DeleteCart(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid cart ID format",
+		})
+	}
+
+	// Get authenticated user
+	userID, ok := c.Get("userLogin").(int)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+
+	// Check cart item exists and belongs to user
+	cartItem, err := h.cartRepository.GetByID(uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, dto.ErrorResult{
+				Code:    http.StatusNotFound,
+				Message: "Cart item not found",
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch cart item",
+		})
+	}
+
+	// Check ownership (unless admin)
+	isAdmin, _ := c.Get("isAdmin").(bool)
+	if !isAdmin && cartItem.UserID != uint(userID) {
+		return c.JSON(http.StatusForbidden, dto.ErrorResult{
+			Code:    http.StatusForbidden,
+			Message: "Forbidden: You don't have access to this cart item",
+		})
+	}
+
+	if err := h.cartRepository.Delete(uint(id)); err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to delete cart item",
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: "Cart item deleted successfully",
+	})
+}
+
+// GetUserCart godoc
+// @Summary Get user's cart
+// @Description Get all cart items for the authenticated user
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} dto.SuccessResult{data=[]cart.CartResponse}
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /users/cart [get]
+func (h *Handler) GetUserCart(c echo.Context) error {
+	userID, ok := c.Get("userLogin").(int)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		})
+	}
+
+	carts, err := h.cartRepository.GetByUserID(uint(userID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch user cart",
+		})
+	}
+
+	var response []dtoCart.CartResponse
+	for _, cartItem := range carts {
+		response = append(response, dtoCart.CartResponse{
+			ID:        cartItem.ID,
+			UserID:    cartItem.UserID,
+			ProductID: cartItem.ProductID,
+			Quantity:  cartItem.Quantity,
+			Product: dtoCart.Product{
+				ID:       cartItem.Product.ID,
+				Name:     cartItem.Product.Name,
+				Price:    cartItem.Product.Price,
+				Quantity: cartItem.Product.Quantity,
+				BrandID:  cartItem.Product.BrandID,
+			},
+		})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: response,
+	})
+}
+
+// GetAllCartsWithPagination godoc
+// @Summary Get paginated carts (Admin)
+// @Description Get paginated list of all cart items (Admin only)
+// @Tags Cart
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "Page number" default(1) minimum(1)
+// @Param limit query int false "Items per page" default(10) minimum(1) maximum(100)
+// @Success 200 {object} dto.SuccessResult{data=CartPaginationResponse}
+// @Failure 400 {object} dto.ErrorResult
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 403 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /carts/paginate [get]
+func (h *Handler) GetAllCartsWithPagination(c echo.Context) error {
+	// Admin check
+	isAdmin, ok := c.Get("isAdmin").(bool)
+	if !ok || !isAdmin {
+		return c.JSON(http.StatusForbidden, dto.ErrorResult{
+			Code:    http.StatusForbidden,
+			Message: "Forbidden: Admin access required",
+		})
+	}
+
+	pageStr := c.QueryParam("page")
+	limitStr := c.QueryParam("limit")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	} else if limit > 100 {
+		limit = 100
+	}
+
+	carts, total, err := h.cartRepository.GetAllWithPagination(page, limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
+			Code:    http.StatusInternalServerError,
+			Message: "Failed to fetch carts",
+		})
+	}
+
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	// Map to response format
+	var cartResponses []dtoCart.CartResponse
+	for _, cartItem := range carts {
+		cartResponses = append(cartResponses, dtoCart.CartResponse{
+			ID:        cartItem.ID,
+			UserID:    cartItem.UserID,
+			ProductID: cartItem.ProductID,
+			Quantity:  cartItem.Quantity,
+			Product: dtoCart.Product{
+				ID:       cartItem.Product.ID,
+				Name:     cartItem.Product.Name,
+				Price:    cartItem.Product.Price,
+				Quantity: cartItem.Product.Quantity,
+				BrandID:  cartItem.Product.BrandID,
+			},
+		})
+	}
+
+	response := struct {
+		Carts      []dtoCart.CartResponse `json:"carts"`
+		Total      int                    `json:"total"`
+		Page       int                    `json:"page"`
+		Limit      int                    `json:"limit"`
+		TotalPages int                    `json:"total_pages"`
+	}{
+		Carts:      cartResponses,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResult{
+		Code: http.StatusOK,
+		Data: response,
 	})
 }

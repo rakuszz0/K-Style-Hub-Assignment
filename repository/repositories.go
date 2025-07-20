@@ -204,3 +204,155 @@ func (r *productRepository) GetAllWithPagination(page, limit int) ([]models.Prod
 
 	return products, int(total), nil
 }
+
+type CartRepository interface {
+	Create(cart *models.Cart) error
+	GetAll() ([]models.Cart, error)
+	GetByID(id uint) (*models.Cart, error)
+	Update(cart *models.Cart) error
+	Delete(id uint) error
+	GetByUserID(userID uint) ([]models.Cart, error)
+	GetByUserIDAndProductID(userID, productID uint) (*models.Cart, error)
+	GetAllWithPagination(page, limit int) ([]models.Cart, int, error)
+}
+
+type cartRepository struct {
+	db *gorm.DB
+}
+
+func NewCartRepository(db *gorm.DB) CartRepository {
+	return &cartRepository{db: db}
+}
+
+func (r *cartRepository) Create(cart *models.Cart) error {
+	return r.db.Create(cart).Error
+}
+
+func (r *cartRepository) GetAll() ([]models.Cart, error) {
+	var carts []models.Cart
+	err := r.db.Preload("User").Preload("Product").Find(&carts).Error
+	return carts, err
+}
+
+func (r *cartRepository) GetByID(id uint) (*models.Cart, error) {
+	var cart models.Cart
+	err := r.db.Preload("User").Preload("Product").First(&cart, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &cart, err
+}
+
+func (r *cartRepository) Update(cart *models.Cart) error {
+	return r.db.Save(cart).Error
+}
+
+func (r *cartRepository) Delete(id uint) error {
+	return r.db.Delete(&models.Cart{}, id).Error
+}
+
+func (r *cartRepository) GetByUserID(userID uint) ([]models.Cart, error) {
+	var carts []models.Cart
+	err := r.db.Where("user_id = ?", userID).Preload("Product").Find(&carts).Error
+	return carts, err
+}
+
+func (r *cartRepository) GetByUserIDAndProductID(userID, productID uint) (*models.Cart, error) {
+	var cart models.Cart
+	err := r.db.Where("user_id = ? AND product_id = ?", userID, productID).First(&cart).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &cart, err
+}
+
+func (r *cartRepository) GetAllWithPagination(page, limit int) ([]models.Cart, int, error) {
+	var carts []models.Cart
+	var total int64
+
+	offset := (page - 1) * limit
+
+	err := r.db.Model(&models.Cart{}).
+		Count(&total).
+		Limit(limit).
+		Offset(offset).
+		Preload("User").
+		Preload("Product").
+		Find(&carts).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return carts, int(total), nil
+}
+
+type OrderRepository interface {
+	Create(order *models.Order) error
+	GetAll() ([]models.Order, error)
+	GetByID(id uint) (*models.Order, error)
+	Update(order *models.Order) error
+	Delete(id uint) error
+	GetByUserID(userID uint) ([]models.Order, error)
+	GetAllWithPagination(page, limit int) ([]models.Order, int, error)
+}
+
+type orderRepository struct {
+	db *gorm.DB
+}
+
+func NewOrderRepository(db *gorm.DB) OrderRepository {
+	return &orderRepository{db: db}
+}
+
+func (r *orderRepository) Create(order *models.Order) error {
+	return r.db.Create(order).Error
+}
+
+func (r *orderRepository) GetAll() ([]models.Order, error) {
+	var orders []models.Order
+	err := r.db.Preload("User").Preload("Product").Find(&orders).Error
+	return orders, err
+}
+
+func (r *orderRepository) GetByID(id uint) (*models.Order, error) {
+	var order models.Order
+	err := r.db.Preload("User").Preload("Product").First(&order, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &order, err
+}
+
+func (r *orderRepository) Update(order *models.Order) error {
+	return r.db.Save(order).Error
+}
+
+func (r *orderRepository) Delete(id uint) error {
+	return r.db.Delete(&models.Order{}, id).Error
+}
+
+func (r *orderRepository) GetByUserID(userID uint) ([]models.Order, error) {
+	var orders []models.Order
+	err := r.db.Where("user_id = ?", userID).Preload("Product").Find(&orders).Error
+	return orders, err
+}
+
+func (r *orderRepository) GetAllWithPagination(page, limit int) ([]models.Order, int, error) {
+	var orders []models.Order
+	var total int64
+
+	offset := (page - 1) * limit
+
+	err := r.db.Model(&models.Order{}).
+		Count(&total).
+		Limit(limit).
+		Offset(offset).
+		Preload("User").
+		Preload("Product").
+		Find(&orders).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return orders, int(total), nil
+}

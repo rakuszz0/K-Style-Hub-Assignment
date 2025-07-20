@@ -13,7 +13,9 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 	userRepo := repositories.NewUserRepository(db)
 	brandRepo := repositories.NewBrandRepository(db)
 	productRepo := repositories.NewProductRepository(db)
-	handler := handlers.NewHandler(userRepo, brandRepo, productRepo)
+	orderRepo := repositories.NewOrderRepository(db)
+	cartRepo := repositories.NewCartRepository(db)
+	handler := handlers.NewHandler(userRepo, brandRepo, productRepo, cartRepo, orderRepo)
 
 	api := e.Group("/api/v1")
 
@@ -50,5 +52,25 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 	products.DELETE("/:id", middleware.Auth(handler.DeleteProduct))
 	products.GET("/brand/:brand_id", handler.GetProductsByBrandID)
 	products.GET("/paginate", handler.GetAllProductsWithPagination)
+
+	// Group untuk Cart
+	cart := api.Group("/carts", middleware.Auth)
+	cart.POST("", handler.CreateCart)
+	cart.GET("", handler.GetUserCart)
+	cart.GET("/all", middleware.Auth(handler.GetAllCarts))
+	cart.GET("/:id", handler.GetCartByID)
+	cart.PUT("/:id", handler.UpdateCart)
+	cart.DELETE("/:id", handler.DeleteCart)
+	cart.GET("/paginate", middleware.Auth(handler.GetAllCartsWithPagination))
+
+	// Group untuk Orders
+	orders := api.Group("/orders", middleware.Auth)
+	orders.POST("", handler.CreateOrder)
+	orders.GET("", handler.GetOrdersByUser)
+	orders.GET("/all", middleware.Auth(handler.GetAllOrders))
+	orders.GET("/:id", handler.GetOrderByID)
+	orders.PUT("/:id", handler.UpdateOrder)
+	orders.DELETE("/:id", handler.DeleteOrder)
+	orders.GET("/paginate", middleware.Auth(handler.GetAllOrderWithPagination))
 
 }

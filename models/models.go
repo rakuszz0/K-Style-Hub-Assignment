@@ -61,6 +61,7 @@ type Order struct {
 	UserID    uint    `json:"user_id" form:"user_id"`
 	ProductID uint    `json:"product_id" form:"product_id"`
 	Quantity  int     `json:"quantity" form:"quantity"`
+	Status    string  `json:"status" form:"status" gorm:"default:'pending'"`
 	User      User    `json:"user" form:"user" gorm:"foreignKey:UserID"`
 	Product   Product `json:"product" form:"product" gorm:"foreignKey:ProductID"`
 }

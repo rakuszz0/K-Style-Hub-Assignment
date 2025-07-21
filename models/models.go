@@ -31,12 +31,20 @@ type UserResponseJWT struct {
 	Address  string `json:"address" form:"address"`
 	Token    string `json:"token"`
 	IsAdmin  bool   `json:"isAdmin" form:"isAdmin"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type Brand struct {
 	ID       uint      `json:"id" gorm:"primaryKey"`
 	Name     string    `json:"name" form:"name"`
 	Products []Product `json:"products" gorm:"foreignKey:BrandID"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type Product struct {
@@ -45,6 +53,10 @@ type Product struct {
 	Price    float64 `json:"price" form:"price"`
 	Quantity int     `json:"quantity" form:"quantity"`
 	BrandID  uint    `json:"brand_id" form:"brand_id"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type Cart struct {
@@ -54,6 +66,10 @@ type Cart struct {
 	Quantity  int     `json:"quantity" form:"quantity"`
 	User      User    `json:"user" form:"user" gorm:"foreignKey:UserID"`
 	Product   Product `json:"product" form:"product" gorm:"foreignKey:ProductID"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type Order struct {
@@ -64,6 +80,10 @@ type Order struct {
 	Status    string  `json:"status" form:"status" gorm:"default:'pending'"`
 	User      User    `json:"user" form:"user" gorm:"foreignKey:UserID"`
 	Product   Product `json:"product" form:"product" gorm:"foreignKey:ProductID"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // type Transaction struct {

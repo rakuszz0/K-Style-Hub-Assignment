@@ -90,6 +90,8 @@ definitions:
     type: object
   ecommerce_dto_brands.BrandResponse:
     properties:
+      created_at:
+        type: string
       id:
         type: integer
       name:
@@ -98,6 +100,8 @@ definitions:
         items:
           $ref: '#/definitions/ecommerce_dto_brands.BrandProductResponse'
         type: array
+      updated_at:
+        type: string
     type: object
   ecommerce_dto_cart.CartRequest:
     properties:
@@ -108,6 +112,8 @@ definitions:
     type: object
   ecommerce_dto_cart.CartResponse:
     properties:
+      created_at:
+        type: string
       id:
         type: integer
       product:
@@ -116,6 +122,8 @@ definitions:
         type: integer
       quantity:
         type: integer
+      updated_at:
+        type: string
       user_id:
         type: integer
     type: object
@@ -141,6 +149,8 @@ definitions:
     type: object
   ecommerce_dto_order.OrderResponse:
     properties:
+      created_at:
+        type: string
       id:
         type: integer
       product:
@@ -150,6 +160,8 @@ definitions:
       quantity:
         type: integer
       status:
+        type: string
+      updated_at:
         type: string
       user_id:
         type: integer
@@ -182,6 +194,8 @@ definitions:
     properties:
       brand_id:
         type: integer
+      created_at:
+        type: string
       id:
         type: integer
       name:
@@ -190,6 +204,8 @@ definitions:
         type: number
       quantity:
         type: integer
+      updated_at:
+        type: string
     type: object
   ecommerce_dto_result.ErrorResult:
     properties:
@@ -225,6 +241,8 @@ definitions:
     type: object
   models.Order:
     properties:
+      created_at:
+        type: string
       id:
         type: integer
       product:
@@ -235,6 +253,8 @@ definitions:
         type: integer
       status:
         type: string
+      updated_at:
+        type: string
       user:
         $ref: '#/definitions/models.User'
       user_id:
@@ -244,6 +264,8 @@ definitions:
     properties:
       brand_id:
         type: integer
+      created_at:
+        type: string
       id:
         type: integer
       name:
@@ -252,6 +274,8 @@ definitions:
         type: number
       quantity:
         type: integer
+      updated_at:
+        type: string
     type: object
   models.User:
     properties:
@@ -282,6 +306,8 @@ definitions:
     properties:
       address:
         type: string
+      created_at:
+        type: string
       email:
         type: string
       id:
@@ -293,6 +319,8 @@ definitions:
       phone:
         type: string
       token:
+        type: string
+      updated_at:
         type: string
       username:
         type: string
@@ -1089,44 +1117,6 @@ paths:
       summary: Update an order by ID
       tags:
       - Order
-  /orders/user:
-    get:
-      description: Get all orders placed by a specific user
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/ecommerce_dto_result.SuccessResult'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/ecommerce_dto_order.OrderResponse'
-                  type: array
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
-      security:
-      - BearerAuth: []
-      summary: Get orders by user ID
-      tags:
-      - Order
   /products:
     get:
       description: Get a list of all products
@@ -1468,9 +1458,9 @@ paths:
       summary: Update user by ID
       tags:
       - User
-  /users/cart:
+  /users/me/cart:
     get:
-      description: Get all cart items for the authenticated user
+      description: Get cart items for the currently authenticated user
       produces:
       - application/json
       responses:
@@ -1495,9 +1485,39 @@ paths:
             $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
       security:
       - BearerAuth: []
-      summary: Get user's cart
+      summary: Get user's own cart
       tags:
       - Cart
+  /users/me/orders:
+    get:
+      description: Get all orders for the currently authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/ecommerce_dto_result.SuccessResult'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/ecommerce_dto_order.OrderResponse'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/ecommerce_dto_result.ErrorResult'
+      security:
+      - BearerAuth: []
+      summary: Get user's own orders
+      tags:
+      - Orders
   /users/paginate:
     get:
       consumes:

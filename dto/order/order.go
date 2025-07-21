@@ -1,5 +1,11 @@
 package order
 
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
 type OrderRequest struct {
 	ProductID uint `json:"product_id" form:"product_id"`
 	Quantity  int  `json:"quantity" form:"quantity"`
@@ -17,6 +23,10 @@ type OrderResponse struct {
 	Quantity  int     `json:"quantity"`
 	Product   Product `json:"product"`
 	Status    string  `json:"status"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type Product struct {

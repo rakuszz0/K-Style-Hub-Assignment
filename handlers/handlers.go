@@ -1201,13 +1201,12 @@ func (h *Handler) GetAllProductsWithPagination(c echo.Context) error {
 // @Router /orders [post]
 // @Security BearerAuth
 func (h *Handler) CreateOrder(c echo.Context) error {
-
-	userIDInterface := c.Get("userLogin")
-	userID, ok := userIDInterface.(float64)
+	// Get user ID with better type handling
+	userID, ok := c.Get("userID").(uint)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
-			Code:    http.StatusUnauthorized,
-			Message: "Unauthorized",
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid user ID format",
 		})
 	}
 
@@ -1215,33 +1214,54 @@ func (h *Handler) CreateOrder(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
 			Code:    http.StatusBadRequest,
-			Message: "Invalid input data",
+			Message: "Invalid input data: " + err.Error(),
 		})
 	}
 
-	// Ambil data produk dari DB untuk validasi & response
+	// Validate quantity
+	if req.Quantity <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Quantity must be greater than 0",
+		})
+	}
+
+	// Get product
 	product, err := h.productRepository.GetByID(req.ProductID)
-	if err != nil {
+	if err != nil || product == nil {
 		return c.JSON(http.StatusNotFound, dto.ErrorResult{
 			Code:    http.StatusNotFound,
 			Message: "Product not found",
 		})
 	}
 
+	// Check stock
+	if product.Quantity < req.Quantity {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("Insufficient stock. Available: %d", product.Quantity),
+		})
+	}
+
+	// Create order
 	order := models.Order{
 		UserID:    uint(userID),
 		ProductID: req.ProductID,
 		Quantity:  req.Quantity,
 		Status:    "pending",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	if err := h.orderRepository.Create(&order); err != nil {
+		log.Printf("Order creation failed: %v", err)
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
 			Code:    http.StatusInternalServerError,
-			Message: "Failed to create order",
+			Message: "Failed to create order: " + err.Error(),
 		})
 	}
 
+	// Prepare response
 	response := dtoOrder.OrderResponse{
 		ID:        order.ID,
 		UserID:    order.UserID,
@@ -1263,37 +1283,64 @@ func (h *Handler) CreateOrder(c echo.Context) error {
 	})
 }
 
-// GetOrdersByUser godoc
-// @Summary Get orders by user ID
-// @Description Get all orders placed by a specific user
-// @Tags Order
+// GetMyOrders godoc
+// @Summary Get user's own orders
+// @Description Get all orders for the currently authenticated user
+// @Tags Orders
 // @Produce json
-// @Success 200 {object} dto.SuccessResult{data=[]dtoOrder.OrderResponse}
-// @Failure 400,401,404,500 {object} dto.ErrorResult
-// @Router /orders/user [get]
 // @Security BearerAuth
-func (h *Handler) GetOrdersByUser(c echo.Context) error {
-	userIDInterface := c.Get("userLogin")
-	userIDFloat, ok := userIDInterface.(float64)
+// @Success 200 {object} dto.SuccessResult{data=[]dtoOrder.OrderResponse}
+// @Failure 401 {object} dto.ErrorResult
+// @Failure 500 {object} dto.ErrorResult
+// @Router /users/me/orders [get]
+func (h *Handler) GetMyOrders(c echo.Context) error {
+	// Extract user ID from JWT
+	userID, ok := c.Get("userID").(uint)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
-			Code:    http.StatusUnauthorized,
-			Message: "Unauthorized",
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid user ID format",
 		})
 	}
-	userID := uint(userIDFloat)
 
+	// Get orders from repository
 	orders, err := h.orderRepository.GetByUserID(userID)
 	if err != nil {
+		log.Printf("Error fetching orders for user %d: %v", userID, err)
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
 			Code:    http.StatusInternalServerError,
-			Message: "Failed to fetch orders",
+			Message: "Failed to fetch your orders",
+		})
+	}
+
+	// Transform to response DTO
+	var response []dtoOrder.OrderResponse
+	for _, order := range orders {
+		product, err := h.productRepository.GetByID(order.ProductID)
+		if err != nil {
+			log.Printf("Warning: Product %d not found for order %d", order.ProductID, order.ID)
+			continue
+		}
+
+		response = append(response, dtoOrder.OrderResponse{
+			ID:        order.ID,
+			UserID:    order.UserID,
+			ProductID: order.ProductID,
+			Quantity:  order.Quantity,
+			Status:    order.Status,
+			CreatedAt: order.CreatedAt,
+			Product: dtoOrder.Product{
+				ID:      product.ID,
+				Name:    product.Name,
+				Price:   product.Price,
+				BrandID: product.BrandID,
+			},
 		})
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResult{
 		Code: http.StatusOK,
-		Data: orders,
+		Data: response,
 	})
 }
 
@@ -1611,11 +1658,11 @@ type OrderPaginationResponse struct {
 // @Router /carts [post]
 func (h *Handler) CreateCart(c echo.Context) error {
 	// Get authenticated user ID
-	userID, ok := c.Get("userLogin").(int)
+	userID, ok := c.Get("userID").(uint) // Ubah ke uint
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
 			Code:    http.StatusUnauthorized,
-			Message: "Unauthorized: User not authenticated",
+			Message: "Unauthorized: Invalid user session",
 		})
 	}
 
@@ -2046,46 +2093,49 @@ func (h *Handler) DeleteCart(c echo.Context) error {
 	})
 }
 
-// GetUserCart godoc
-// @Summary Get user's cart
-// @Description Get all cart items for the authenticated user
+// GetMyCart godoc
+// @Summary Get user's own cart
+// @Description Get cart items for the currently authenticated user
 // @Tags Cart
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} dto.SuccessResult{data=[]dtoCart.CartResponse}
 // @Failure 401 {object} dto.ErrorResult
 // @Failure 500 {object} dto.ErrorResult
-// @Router /users/cart [get]
-func (h *Handler) GetUserCart(c echo.Context) error {
-	userID, ok := c.Get("userLogin").(int)
+// @Router /users/me/cart [get]
+func (h *Handler) GetMyCart(c echo.Context) error {
+	// Extract user ID from JWT
+	userID, ok := c.Get("userID").(uint)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
-			Code:    http.StatusUnauthorized,
-			Message: "Unauthorized",
+		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
+			Code:    http.StatusBadRequest,
+			Message: "Invalid user ID format",
 		})
 	}
 
-	carts, err := h.cartRepository.GetByUserID(uint(userID))
+	// Get cart items from repository
+	cartItems, err := h.cartRepository.GetByUserID(userID)
 	if err != nil {
+		log.Printf("Error fetching cart for user %d: %v", userID, err)
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResult{
 			Code:    http.StatusInternalServerError,
-			Message: "Failed to fetch user cart",
+			Message: "Failed to fetch your cart",
 		})
 	}
 
+	// Transform to response DTO
 	var response []dtoCart.CartResponse
-	for _, cartItem := range carts {
+	for _, item := range cartItems {
 		response = append(response, dtoCart.CartResponse{
-			ID:        cartItem.ID,
-			UserID:    cartItem.UserID,
-			ProductID: cartItem.ProductID,
-			Quantity:  cartItem.Quantity,
+			ID:        item.ID,
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
 			Product: dtoCart.Product{
-				ID:       cartItem.Product.ID,
-				Name:     cartItem.Product.Name,
-				Price:    cartItem.Product.Price,
-				Quantity: cartItem.Product.Quantity,
-				BrandID:  cartItem.Product.BrandID,
+				ID:       item.Product.ID,
+				Name:     item.Product.Name,
+				Price:    item.Product.Price,
+				Quantity: item.Product.Quantity,
+				BrandID:  item.Product.BrandID,
 			},
 		})
 	}

@@ -3,6 +3,7 @@ package jwtToken
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 )
@@ -17,7 +18,13 @@ func GetSecretKey() string {
 
 type MapClaims = jwt.MapClaims
 
-func GenerateToken(claims MapClaims) (string, error) {
+func GenerateToken(userID uint, isAdmin bool) (string, error) {
+	claims := jwt.MapClaims{
+		"id":      userID, // Langsung gunakan uint
+		"isAdmin": isAdmin,
+		"exp":     time.Now().Add(time.Hour * 24).Unix(),
+	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(GetSecretKey()))
 }

@@ -56,7 +56,7 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 	// Group untuk Cart
 	cart := api.Group("/carts", middleware.Auth)
 	cart.POST("", handler.CreateCart)
-	cart.GET("", handler.GetUserCart)
+	cart.GET("/my", handler.GetMyCart)
 	cart.GET("/all", middleware.Auth(handler.GetAllCarts))
 	cart.GET("/:id", handler.GetCartByID)
 	cart.PUT("/:id", handler.UpdateCart)
@@ -65,12 +65,26 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 
 	// Group untuk Orders
 	orders := api.Group("/orders", middleware.Auth)
-	orders.POST("", handler.CreateOrder)
-	orders.GET("", handler.GetOrdersByUser)
-	orders.GET("/all", middleware.Auth(handler.GetAllOrders))
-	orders.GET("/:id", handler.GetOrderByID)
-	orders.PUT("/:id", handler.UpdateOrder)
-	orders.DELETE("/:id", handler.DeleteOrder)
-	orders.GET("/paginate", middleware.Auth(handler.GetAllOrderWithPagination))
+	{
+		// Create order - POST /orders
+		orders.POST("", handler.CreateOrder)
+
+		// Get user's orders - GET /orders/my
+		orders.GET("/my", handler.GetMyOrders)
+
+		// Admin endpoints
+		adminOrders := orders.Group("", middleware.Auth)
+		{
+			// Get all orders - GET /orders/all
+			adminOrders.GET("/all", handler.GetAllOrders)
+			// Paginated orders - GET /orders/paginate
+			adminOrders.GET("/paginate", handler.GetAllOrderWithPagination)
+		}
+
+		// Order by ID operations
+		orders.GET("/:id", handler.GetOrderByID)   // GET /orders/123
+		orders.PUT("/:id", handler.UpdateOrder)    // PUT /orders/123
+		orders.DELETE("/:id", handler.DeleteOrder) // DELETE /orders/123
+	}
 
 }

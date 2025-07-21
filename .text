@@ -1,0 +1,21 @@
+a. Dependency Injection (DI):  
+   - Pola desain untuk menyediakan dependensi objek dari luar (bukan dibuat di dalam objek).  
+   - Contoh: Inject database connection ke service layer.  
+
+   Pointer:  
+   - Variabel yang menyimpan alamat memori suatu nilai.  
+   - Contoh: `var x *int` menyimpan alamat, bukan nilai langsung.  
+
+b. Role-Based Access Control (RBAC):  
+   - Sistem kontrol akses berdasarkan peran (role) pengguna.  
+   - Contoh: Role "admin" punya akses penuh, "user" hanya read-only.  
+
+c. Langkah tangani memory leak di Go:  
+   1. Deteksi leak pakai `pprof` atau `runtime.ReadMemStats`.  
+   2. Cari goroutine menggantung, variabel global, atau cache tak terbatas.  
+   3. Tutup resource (file, koneksi) pakai `defer` atau `context`.  
+   4. Kurangi alokasi memori (misal: pakai `sync.Pool`).  
+
+d. Pengalaman AWS:  
+   - Pernah pakai layanan: EC2, S3, Lambda, RDS, IAM.  
+   - Contoh: Deploy aplikasi backend di EC2 + database RDS.  

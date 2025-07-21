@@ -19,14 +19,14 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 
 	api := e.Group("/api/v1")
 
-	// Group untuk Auth
+	// ==================== AUTH ====================
 	auth := api.Group("/auth")
 	auth.POST("/signup", handler.CreateUser)
 	auth.POST("/signin", handler.SignIn)
 	auth.GET("/check-auth", middleware.Auth(handler.CheckAuth))
 	auth.PUT("/change-password", middleware.Auth(handler.ChangePassword))
 
-	// Group untuk Users
+	// ==================== USERS ====================
 	users := api.Group("/users")
 	users.POST("", handler.CreateUser)
 	users.GET("", handler.GetAllUsers)
@@ -35,7 +35,11 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 	users.DELETE("/:id", handler.DeleteUser)
 	users.GET("/paginate", handler.GetAllUsersWithPagination)
 
-	// Group untuk Brands
+	// Tambahan endpoint user-specific
+	users.GET("/me/orders", middleware.Auth(handler.GetMyOrders))
+	users.GET("/me/cart", middleware.Auth(handler.GetMyCart))
+
+	// ==================== BRANDS ====================
 	brands := api.Group("/brands")
 	brands.POST("", middleware.Auth(handler.CreateBrand))
 	brands.GET("", handler.GetAllBrands)
@@ -43,7 +47,7 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 	brands.PUT("/:id", middleware.Auth(handler.UpdateBrand))
 	brands.DELETE("/:id", middleware.Auth(handler.DeleteBrand))
 
-	// Group untuk Products
+	// ==================== PRODUCTS ====================
 	products := api.Group("/products")
 	products.POST("", middleware.Auth(handler.CreateProduct))
 	products.GET("", handler.GetAllProducts)
@@ -53,38 +57,23 @@ func InitRouter(e *echo.Echo, db *gorm.DB) {
 	products.GET("/brand/:brand_id", handler.GetProductsByBrandID)
 	products.GET("/paginate", handler.GetAllProductsWithPagination)
 
-	// Group untuk Cart
-	cart := api.Group("/carts", middleware.Auth)
-	cart.POST("", handler.CreateCart)
-	cart.GET("/my", handler.GetMyCart)
-	cart.GET("/all", middleware.Auth(handler.GetAllCarts))
-	cart.GET("/:id", handler.GetCartByID)
-	cart.PUT("/:id", handler.UpdateCart)
-	cart.DELETE("/:id", handler.DeleteCart)
-	cart.GET("/paginate", middleware.Auth(handler.GetAllCartsWithPagination))
+	// ==================== CART ====================
+	carts := api.Group("/carts", middleware.Auth)
+	carts.POST("", handler.CreateCart)
+	carts.GET("/my", handler.GetMyCart)
+	carts.GET("/all", handler.GetAllCarts)
+	carts.GET("/:id", handler.GetCartByID)
+	carts.PUT("/:id", handler.UpdateCart)
+	carts.DELETE("/:id", handler.DeleteCart)
+	carts.GET("/paginate", handler.GetAllCartsWithPagination)
 
-	// Group untuk Orders
+	// ==================== ORDERS ====================
 	orders := api.Group("/orders", middleware.Auth)
-	{
-		// Create order - POST /orders
-		orders.POST("", handler.CreateOrder)
-
-		// Get user's orders - GET /orders/my
-		orders.GET("/my", handler.GetMyOrders)
-
-		// Admin endpoints
-		adminOrders := orders.Group("", middleware.Auth)
-		{
-			// Get all orders - GET /orders/all
-			adminOrders.GET("/all", handler.GetAllOrders)
-			// Paginated orders - GET /orders/paginate
-			adminOrders.GET("/paginate", handler.GetAllOrderWithPagination)
-		}
-
-		// Order by ID operations
-		orders.GET("/:id", handler.GetOrderByID)   // GET /orders/123
-		orders.PUT("/:id", handler.UpdateOrder)    // PUT /orders/123
-		orders.DELETE("/:id", handler.DeleteOrder) // DELETE /orders/123
-	}
-
+	orders.POST("", handler.CreateOrder)
+	orders.GET("/me", handler.GetMyOrders)
+	orders.GET("/:id", handler.GetOrderByID)
+	orders.PUT("/:id", handler.UpdateOrder)
+	orders.DELETE("/:id", handler.DeleteOrder)
+	orders.GET("/all", handler.GetAllOrders)
+	orders.GET("/paginate", handler.GetAllOrderWithPagination)
 }

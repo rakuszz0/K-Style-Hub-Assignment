@@ -1295,8 +1295,15 @@ func (h *Handler) CreateOrder(c echo.Context) error {
 // @Router /users/me/orders [get]
 func (h *Handler) GetMyOrders(c echo.Context) error {
 	// Extract user ID from JWT
-	userID, ok := c.Get("userID").(uint)
-	if !ok {
+	var userID uint
+	switch v := c.Get("userID").(type) {
+	case uint:
+		userID = v
+	case int:
+		userID = uint(v)
+	case float64:
+		userID = uint(v)
+	default:
 		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
 			Code:    http.StatusBadRequest,
 			Message: "Invalid user ID format",
@@ -1658,11 +1665,11 @@ type OrderPaginationResponse struct {
 // @Router /carts [post]
 func (h *Handler) CreateCart(c echo.Context) error {
 	// Get authenticated user ID
-	userID, ok := c.Get("userID").(uint) // Ubah ke uint
+	userID, ok := c.Get("userLogin").(int)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, dto.ErrorResult{
 			Code:    http.StatusUnauthorized,
-			Message: "Unauthorized: Invalid user session",
+			Message: "Unauthorized: User not authenticated",
 		})
 	}
 
@@ -2105,8 +2112,15 @@ func (h *Handler) DeleteCart(c echo.Context) error {
 // @Router /users/me/cart [get]
 func (h *Handler) GetMyCart(c echo.Context) error {
 	// Extract user ID from JWT
-	userID, ok := c.Get("userID").(uint)
-	if !ok {
+	var userID uint
+	switch v := c.Get("userID").(type) {
+	case uint:
+		userID = v
+	case int:
+		userID = uint(v)
+	case float64:
+		userID = uint(v)
+	default:
 		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
 			Code:    http.StatusBadRequest,
 			Message: "Invalid user ID format",

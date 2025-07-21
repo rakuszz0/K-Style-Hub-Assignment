@@ -1202,8 +1202,15 @@ func (h *Handler) GetAllProductsWithPagination(c echo.Context) error {
 // @Security BearerAuth
 func (h *Handler) CreateOrder(c echo.Context) error {
 	// Get user ID with better type handling
-	userID, ok := c.Get("userID").(uint)
-	if !ok {
+	var userID uint
+	switch v := c.Get("userID").(type) {
+	case uint:
+		userID = v
+	case int:
+		userID = uint(v)
+	case float64:
+		userID = uint(v)
+	default:
 		return c.JSON(http.StatusBadRequest, dto.ErrorResult{
 			Code:    http.StatusBadRequest,
 			Message: "Invalid user ID format",
